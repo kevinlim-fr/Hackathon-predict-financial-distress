@@ -1,0 +1,219 @@
+---
+title: "Hackathon VF"
+author: "Kevin LIM & Boris Louchart"
+date: "17/12/2020"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+# Libraries installation/import and dataset import
+ 
+```{r}
+# Libraries installation
+# install.packages("caret", dependencies = c("Depends", "Suggests"))
+
+# Importing libraries
+library(caret)
+library(MASS)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+library(Metrics)
+library(gbm)
+library(knitr)
+library(ggplot2)
+library(dplyr)
+library(ROCR)
+library(pROC)
+library(cowplot)
+```
+
+```{r}
+setwd("C:/Users/kevin/Documents/GitHub/wip/ESILV/HackathonF")
+# Importing the dataset
+dataset_test <- read.csv("test.csv")
+df_test <- read.csv("test.csv")
+dataset <- read.csv("data.csv", header = TRUE)
+# Removing unnecessary lines
+dataset <- dataset[1:53037,]
+# Setting as factor for classification
+dataset$SeriousDlqin2yrs <- as.factor(dataset$SeriousDlqin2yrs)
+
+# Splitting the Dataset
+inTrain <- createDataPartition(dataset$SeriousDlqin2yrs, p=0.75, list = FALSE)
+training_set <- dataset[ inTrain,]
+testing_set <- dataset[ -inTrain,]
+
+# In order to get a better accuracy we decided to scale and center the value.
+preproc.param <- preProcess(training_set, method = c("center", "scale"))
+training.transformed <- preproc.param %>% predict(training_set)
+testing.transformed <- preproc.param %>% predict(testing_set)
+```
+
+
+# STEP 3 : Classification algorithms test and selection
+
+## Linear Discriminant analysis
+```{r}
+model <- lda(SeriousDlqin2yrs~., data = training.transformed)
+
+testFinal.transformed <- preproc.param %>% predict(df_test)
+prediction3 <- model %>% predict(testFinal.transformed) 
+predictions <- predict(model, testing.transformed)
+
+mean(predictions$class==testing.transformed$SeriousDlqin2yrs)
+cfm <- confusionMatrix(predictions$class,testing_set$SeriousDlqin2yrs)
+cfm
+```
+
+```{r}
+ctable <- as.table(matrix(c(cfm$table), nrow = 2, byrow = TRUE))
+fourfoldplot(ctable, color = c("#CC6666", "#99CC99"),
+             conf.level = 0, margin = 1, main = "Confusion Matrix")
+```
+
+```{r}
+a <- as.numeric(testing_set$SeriousDlqin2yrs)
+b <- as.numeric(predictions$class)
+roc1 <- roc(b,a)
+print(roc1)
+```
+
+
+## Logistic Regression
+```{r}
+logistic <- glm(SeriousDlqin2yrs ~ .-SeriousDlqin2yrs ,data=training_set,family="binomial")
+summary(logistic)
+logipred = predict(logistic, newdata = testing_set[c(2,3,4,5,6,7,8,9,10,11)], type="response")
+logistic_prediction = ifelse(logipred >= 0.5, 1,0)
+logistic_prediction = as.factor(logistic_prediction)
+logistic_cm <- confusionMatrix(testing_set$SeriousDlqin2yrs,logistic_prediction)
+```
+
+## Classification Tree
+```{r}
+ctree <- rpart(SeriousDlqin2yrs ~.-SeriousDlqin2yrs, method="class",data=dataset)
+ctree_prediction <- predict(ctree, new_data = dataset, type = "class")
+accuracy(dataset$SeriousDlqin2yrs,ctree_prediction)
+ctree_cm <- confusionMatrix(dataset$SeriousDlqin2yrs,ctree_prediction)
+```
+
+## Random Forest
+```{r}
+p = length(ctree) - 1
+randomF <- randomForest(SeriousDlqin2yrs ~.-SeriousDlqin2yrs, data=training_set, mtry=p/3)
+randomFpred <- predict(randomF,testing_set)
+randF_cm <- confusionMatrix(testing_set$SeriousDlqin2yrs,randomFpred)
+```
+
+## Bagging
+```{r}
+p = length(ctree)-1 
+bagging <- randomForest(SeriousDlqin2yrs ~.-SeriousDlqin2yrs, data=training_set, mtry=p)
+baggingpred <- predict(bagging,testing_set)
+bagging_cm <- confusionMatrix(testing_set$SeriousDlqin2yrs,baggingpred)
+```
+
+## Ploting confusion matrixes
+```{r}
+
+t1 <- data.frame(logistic_cm$table)
+
+pt1 <- t1 %>%
+  mutate(goodbad = ifelse(t1$Prediction == t1$Reference, "good", "bad")) %>%
+  group_by(Reference) %>%
+  mutate(prop = Freq/sum(Freq))
+
+p1 <- ggplot(data = pt1, mapping = aes(x = Reference, y = Prediction, fill = goodbad, alpha = prop)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), vjust = .5, fontface  = "bold", alpha = 1) +
+  scale_fill_manual(values = c(good = "green", bad = "red")) +
+  theme_bw() +
+  xlim(rev(levels(t1$Reference)))
+
+
+t2 <- data.frame(logistic_cm$table)
+
+pt2 <- t2 %>%
+  mutate(goodbad = ifelse(t2$Prediction == t2$Reference, "good", "bad")) %>%
+  group_by(Reference) %>%
+  mutate(prop = Freq/sum(Freq))
+
+p2 <- ggplot(data = pt2, mapping = aes(x = Reference, y = Prediction, fill = goodbad, alpha = prop)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), vjust = .5, fontface  = "bold", alpha = 1) +
+  scale_fill_manual(values = c(good = "green", bad = "red")) +
+  theme_bw() +
+  xlim(rev(levels(t2$Reference)))
+
+
+t3 <- data.frame(randF_cm$table)
+
+pt3 <- t3 %>%
+  mutate(goodbad = ifelse(t3$Prediction == t3$Reference, "good", "bad")) %>%
+  group_by(Reference) %>%
+  mutate(prop = Freq/sum(Freq))
+
+p3 <- ggplot(data = pt3, mapping = aes(x = Reference, y = Prediction, fill = goodbad, alpha = prop)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), vjust = .5, fontface  = "bold", alpha = 1) +
+  scale_fill_manual(values = c(good = "green", bad = "red")) +
+  theme_bw() +
+  xlim(rev(levels(t3$Reference)))
+
+
+t4 <- data.frame(bagging_cm$table)
+
+pt4 <- t4 %>%
+  mutate(goodbad = ifelse(t4$Prediction == t4$Reference, "good", "bad")) %>%
+  group_by(Reference) %>%
+  mutate(prop = Freq/sum(Freq))
+
+p4 <- ggplot(data = pt4, mapping = aes(x = Reference, y = Prediction, fill = goodbad, alpha = prop)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), vjust = .5, fontface  = "bold", alpha = 1) +
+  scale_fill_manual(values = c(good = "green", bad = "red")) +
+  theme_bw() +
+  xlim(rev(levels(t4$Reference)))
+
+
+t5 <- data.frame(cfm$table)
+
+pt5 <- t5 %>%
+  mutate(goodbad = ifelse(t5$Prediction == t5$Reference, "good", "bad")) %>%
+  group_by(Reference) %>%
+  mutate(prop = Freq/sum(Freq))
+
+p5 <- ggplot(data = pt5, mapping = aes(x = Reference, y = Prediction, fill = goodbad, alpha = prop)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), vjust = .5, fontface  = "bold", alpha = 1) +
+  scale_fill_manual(values = c(good = "green", bad = "red")) +
+  theme_bw() +
+  xlim(rev(levels(t5$Reference)))
+
+
+```
+## MULTIPLOT
+```{r}
+plot_grid(p1,p2,p3,p4,p5,labels = c("Logistic Regression", "Single Tree","RandomF","Bagging","Linear discriminant analysis"), ncol = 3, nrow = 2)
+
+# Logistic Regression
+logistic_cm$overall
+# Classification Tree
+ctree_cm$overall
+# Random Forest
+randF_cm$overall
+# Bagging
+bagging_cm$overall
+# Linear discriminant analysis
+cfm$overall
+```
+
+## Final Submissions for the Hackathon
+```{r}
+testFinal.transformed <- preproc.param %>% predict(df_test)
+prediction3 <- model %>% predict(testFinal.transformed)  
+write.csv(prediction3$class,'submission4.csv')
+# We could improve the accuracy by taking into consideration that the dataset is unbalanced (downsampling, improving the F-score)
+```
+
