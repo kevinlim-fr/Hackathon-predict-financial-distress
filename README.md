@@ -16,7 +16,7 @@ We mesured the performance of the following algorithms:
 - Linear Discriminant Analysis
 The Linear Discriminant Analysis has the best accuracy with: 93,29%. 
 
-### Impovements
+## Impovements
 - We can fix the dataset unbalance by downsampling the entries.
 - We can improve our research by making hyperparameters tuning for our algorithms
 - We can improve our model by looking at more mesures like the f-score, precision and recall beucause our dataset is unbalanced.
