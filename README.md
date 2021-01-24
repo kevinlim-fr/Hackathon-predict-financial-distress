@@ -14,6 +14,7 @@ We mesured the performance of the following algorithms:
 - Classificaiton Tree
 - Random Forest - Bagging
 - Linear Discriminant Analysis
+
 The Linear Discriminant Analysis has the best accuracy with: 93,29%. 
 
 ## Impovements
